@@ -5037,10 +5037,10 @@ safe-buffer@^5.0.1, safe-buffer@^5.1.0, safe-buffer@^5.1.1, safe-buffer@^5.1.2, 
   resolved "https://registry.yarnpkg.com/safer-buffer/-/safer-buffer-2.1.2.tgz#44fa161b0187b9549dd84bb91802f9bd8385cd6a"
   integrity sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==
 
-savingscelo@^2.3.2:
-  version "2.3.2"
-  resolved "https://registry.yarnpkg.com/savingscelo/-/savingscelo-2.3.2.tgz#a33f4abbaed711e5b30dc3f8025ae9b478385c5c"
-  integrity sha512-HYpMWEKzrO9lF51+gTjMM4wV+hQ5hBSSCqqXkt3K3lbz8Hxr6r3Z05OTmastAhEFBwaQ4seul2gzpt6IcSMrtQ==
+savingscelo@^2.4.0:
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/savingscelo/-/savingscelo-2.4.0.tgz#b57a00f679b4cde6b9dc344f0464737214663009"
+  integrity sha512-+RVuINa0T2HC2ya8Tqf0+fpcZnLSwtWvJfdzmGL7D4OmMiY2SY2rmqc6srM6BFqgyHLF4Ej6eOKlmzIX7/DrBQ==
   dependencies:
     "@celo/connect" "1.1.0"
     "@celo/contractkit" "1.1.0"

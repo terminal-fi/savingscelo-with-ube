@@ -48,6 +48,9 @@ contract SavingsCELOWithUbeV1 {
 			assert(sCELOReceived >= sCELOfromDirect);
 		} else {
 			direct = false;
+			require(
+				CELO.approve(address(ubeRouter), msg.value),
+				"CELO approve failed for ubeRouter!");
 			sCELOReceived = ubeRouter.swapExactTokensForTokens(
 				msg.value, sCELOfromUbe, path, address(this), block.timestamp)[1];
 			assert(sCELOReceived >= sCELOfromUbe);
