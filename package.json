@@ -33,8 +33,7 @@
     "compile:ts": "yarn tsc -b",
     "build": "yarn compile:contracts && yarn compile:ts",
     "clean": "rm -rf ./build ./dist ./types",
-    "test": "./testall.sh",
-    "testone": "yarn compile:ts && yarn truffle test --bail",
+    "test": "./test.sh",
     "prepublishOnly": "yarn clean && yarn build",
     "devchain": "rm -f ./src/deploy/ganache.*.json && yarn celo-devchain --port 7545",
     "deploy": "yarn ts-node ./src/deploy/deployer.ts"
