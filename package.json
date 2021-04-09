@@ -9,6 +9,7 @@
     "@celo/connect": "1.1.0",
     "@celo/contractkit": "1.1.0",
     "bignumber.js": "^9.0.1",
+    "savingscelo": "^2.3.2",
     "web3": "^1.3.4",
     "web3-utils": "^1.3.0"
   },
