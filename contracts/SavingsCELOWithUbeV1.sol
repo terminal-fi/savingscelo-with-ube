@@ -35,11 +35,12 @@ contract SavingsCELOWithUbeV1 {
 	}
 
 	function deposit() external payable returns (uint256) {
-		uint256 sCELOfromDirect = savingsCELO.celoToSavings(msg.value);
 		address[] memory path = new address[](2);
 		path[0] = address(CELO);
 		path[1] = address(sCELO);
 		uint256 sCELOfromUbe = ubeRouter.getAmountsOut(msg.value, path)[1];
+		uint256 sCELOfromDirect = savingsCELO.celoToSavings(msg.value);
+
 		uint256 sCELOReceived;
 		bool direct;
 		if (sCELOfromDirect >= sCELOfromUbe) {
@@ -62,7 +63,7 @@ contract SavingsCELOWithUbeV1 {
 		return sCELOReceived;
 	}
 
-	function getUbeReserves() internal view returns (uint256 reserve_CELO, uint256 reserve_sCELO) {
+	function getUbeReserves() public view returns (uint256 reserve_CELO, uint256 reserve_sCELO) {
 		(uint256 reserve0, uint256 reserve1, ) = ubePair.getReserves();
 		return (ubePair.token0() == address(CELO)) ? (reserve0, reserve1) : (reserve1, reserve0);
 	}
@@ -96,27 +97,36 @@ contract SavingsCELOWithUbeV1 {
 		ubePair.sync();
 		uint256 toConvert_CELO = calculateToConvertCELO(amount_CELO, amount_sCELO, reserveMaxRatio);
 		uint256 converted_sCELO = 0;
-		require(
-			CELO.transferFrom(msg.sender, address(this), amount_CELO),
-			"CELO transferFrom failed!");
-		require(
-			sCELO.transferFrom(msg.sender, address(this), amount_sCELO),
-			"sCELO transferFrom failed!");
+		if (amount_CELO > 0) {
+			require(
+				CELO.transferFrom(msg.sender, address(this), amount_CELO),
+				"CELO transferFrom failed!");
+		}
+		if (amount_sCELO > 0) {
+			require(
+				sCELO.transferFrom(msg.sender, address(this), amount_sCELO),
+				"sCELO transferFrom failed!");
+		}
 		if (toConvert_CELO > 0) {
 			converted_sCELO = savingsCELO.deposit{value: toConvert_CELO}();
 			amount_sCELO = amount_sCELO.add(converted_sCELO);
 			amount_CELO = amount_CELO.sub(toConvert_CELO);
 		}
-		require(
-			CELO.approve(address(ubeRouter), added_CELO),
-			"CELO approve failed for ubeRouter!");
-		require(
-			sCELO.approve(address(ubeRouter), added_sCELO),
-			"sCELO approve failed for ubeRouter!");
+		if (amount_CELO > 0) {
+			require(
+				CELO.approve(address(ubeRouter), amount_CELO),
+				"CELO approve failed for ubeRouter!");
+		}
+		if (amount_sCELO > 0) {
+			require(
+				sCELO.approve(address(ubeRouter), amount_sCELO),
+				"sCELO approve failed for ubeRouter!");
+		}
 		(added_CELO, added_sCELO, addedLiquidity) = ubeRouter.addLiquidity(
 			address(CELO), address(sCELO),
 			amount_CELO, amount_sCELO,
-			0, 0, msg.sender, block.timestamp);
+			0, 0,
+			msg.sender, block.timestamp);
 
 		// Return "dust" back to the caller.
 		if (amount_CELO > added_CELO) {
