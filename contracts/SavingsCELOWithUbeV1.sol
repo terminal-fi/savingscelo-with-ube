@@ -10,11 +10,11 @@ import "./interfaces/IUniswapV2.sol";
 contract SavingsCELOWithUbeV1 {
 	using SafeMath for uint256;
 
-	ISavingsCELO savingsCELO;
-	IERC20 sCELO;
-	IERC20 CELO;
-	IUniswapV2Router ubeRouter;
-	IUniswapV2Pair ubePair;
+	ISavingsCELO public savingsCELO;
+	IUniswapV2Router public ubeRouter;
+	IUniswapV2Pair public ubePair;
+	IERC20 public sCELO;
+	IERC20 public CELO;
 
 	event Deposited(address indexed from, uint256 celoAmount, uint256 savingsAmount, bool direct);
 	event AddedLiquidity(address indexed from, uint256 celoAmount, uint256 savingsAmount, uint256 liquidity);
@@ -30,15 +30,17 @@ contract SavingsCELOWithUbeV1 {
 		ubeRouter = IUniswapV2Router(_ubeRouter);
 		IUniswapV2Factory factory = IUniswapV2Factory(ubeRouter.factory());
 		address _pair = factory.getPair(_savingsCELO, _CELO);
+		if (_pair == address(0)) {
+			_pair = factory.createPair(_savingsCELO, _CELO);
+		}
 		require(_pair != address(0), "Ubeswap pair must already exist!");
 		ubePair = IUniswapV2Pair(_pair);
 	}
 
 	function deposit() external payable returns (uint256) {
-		address[] memory path = new address[](2);
-		path[0] = address(CELO);
-		path[1] = address(sCELO);
-		uint256 sCELOfromUbe = ubeRouter.getAmountsOut(msg.value, path)[1];
+		(uint256 reserve_CELO, uint256 reserve_sCELO) = ubeGetReserves();
+		uint256 sCELOfromUbe = (reserve_CELO == 0 || reserve_sCELO == 0) ? 0 :
+			ubeGetAmountOut(msg.value, reserve_CELO, reserve_sCELO);
 		uint256 sCELOfromDirect = savingsCELO.celoToSavings(msg.value);
 
 		uint256 sCELOReceived;
@@ -49,6 +51,9 @@ contract SavingsCELOWithUbeV1 {
 			assert(sCELOReceived >= sCELOfromDirect);
 		} else {
 			direct = false;
+			address[] memory path = new address[](2);
+			path[0] = address(CELO);
+			path[1] = address(sCELO);
 			require(
 				CELO.approve(address(ubeRouter), msg.value),
 				"CELO approve failed for ubeRouter!");
@@ -63,38 +68,11 @@ contract SavingsCELOWithUbeV1 {
 		return sCELOReceived;
 	}
 
-	function getUbeReserves() public view returns (uint256 reserve_CELO, uint256 reserve_sCELO) {
-		(uint256 reserve0, uint256 reserve1, ) = ubePair.getReserves();
-		return (ubePair.token0() == address(CELO)) ? (reserve0, reserve1) : (reserve1, reserve0);
-	}
-
-	function calculateToConvertCELO(
-		uint256 amount_CELO,
-		uint256 amount_sCELO,
-		uint256 reserveMaxRatio
-	) internal view returns (uint256 toConvert_CELO) {
-		(uint256 reserve_CELO, uint256 reserve_sCELO) = getUbeReserves();
-		uint256 reserve_sCELOasCELO = savingsCELO.savingsToCELO(reserve_sCELO);
-		require(
-			reserve_CELO.mul(reserveMaxRatio) >= reserve_sCELOasCELO.mul(1e18),
-			"Too little CELO in the liqudity pool. Adding liquidity is not safe!");
-		require(
-			reserve_sCELOasCELO.mul(reserveMaxRatio) >= reserve_CELO.mul(1e18),
-			"Too little sCELO in the liqudity pool. Adding liquidity is not safe!");
-
-		uint256 matched_CELO = amount_sCELO.mul(reserve_CELO).div(reserve_sCELO);
-		require(
-			matched_CELO <= amount_CELO,
-			"Too much sCELO. Can not add proportional liquidity!");
-		return amount_CELO.sub(matched_CELO).mul(reserve_sCELOasCELO).div(reserve_CELO.add(reserve_sCELOasCELO));
-	}
-
 	function addLiquidity(
 		uint256 amount_CELO,
 		uint256 amount_sCELO,
 		uint256 reserveMaxRatio
 	) external returns (uint256 added_CELO, uint256 added_sCELO, uint256 addedLiquidity) {
-		ubePair.sync();
 		uint256 toConvert_CELO = calculateToConvertCELO(amount_CELO, amount_sCELO, reserveMaxRatio);
 		uint256 converted_sCELO = 0;
 		if (amount_CELO > 0) {
@@ -125,20 +103,8 @@ contract SavingsCELOWithUbeV1 {
 		(added_CELO, added_sCELO, addedLiquidity) = ubeRouter.addLiquidity(
 			address(CELO), address(sCELO),
 			amount_CELO, amount_sCELO,
-			0, 0,
+			amount_CELO.sub(2), amount_sCELO,
 			msg.sender, block.timestamp);
-
-		// Return "dust" back to the caller.
-		if (amount_CELO > added_CELO) {
-			require(
-				CELO.transfer(msg.sender, amount_CELO.sub(added_CELO)),
-				"CELO transfer failed!");
-		}
-		if (amount_sCELO > added_sCELO) {
-			require(
-				sCELO.transfer(msg.sender, amount_sCELO.sub(added_sCELO)),
-				"sCELO transfer failed!");
-		}
 
 		added_CELO = added_CELO.add(toConvert_CELO);
 		added_sCELO = added_sCELO.sub(converted_sCELO);
@@ -146,5 +112,45 @@ contract SavingsCELOWithUbeV1 {
 		return (added_CELO, added_sCELO, addedLiquidity);
 	}
 
-	receive() external payable {}
+	function ubeGetReserves() public view returns (uint256 reserve_CELO, uint256 reserve_sCELO) {
+		(uint256 reserve0, uint256 reserve1, ) = ubePair.getReserves();
+		return (ubePair.token0() == address(CELO)) ? (reserve0, reserve1) : (reserve1, reserve0);
+	}
+
+	function ubeGetAmountOut(
+		uint amountIn,
+		uint reserveIn,
+		uint reserveOut) internal pure returns (uint amountOut) {
+		require(amountIn > 0, 'UniswapV2Library: INSUFFICIENT_INPUT_AMOUNT');
+		require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
+		uint amountInWithFee = amountIn.mul(997);
+		uint numerator = amountInWithFee.mul(reserveOut);
+		uint denominator = reserveIn.mul(1000).add(amountInWithFee);
+		amountOut = numerator / denominator;
+	}
+
+	function calculateToConvertCELO(
+		uint256 amount_CELO,
+		uint256 amount_sCELO,
+		uint256 reserveMaxRatio
+	) internal view returns (uint256 toConvert_CELO) {
+		(uint256 reserve_CELO, uint256 reserve_sCELO) = ubeGetReserves();
+		if (reserve_CELO == 0 && reserve_sCELO == 0) {
+			reserve_CELO = 1;
+			reserve_sCELO = savingsCELO.celoToSavings(1);
+		}
+		uint256 reserve_sCELOasCELO = savingsCELO.savingsToCELO(reserve_sCELO);
+		require(
+			reserve_CELO.mul(reserveMaxRatio) >= reserve_sCELOasCELO.mul(1e18),
+			"Too little CELO in the liqudity pool. Adding liquidity is not safe!");
+		require(
+			reserve_sCELOasCELO.mul(reserveMaxRatio) >= reserve_CELO.mul(1e18),
+			"Too little sCELO in the liqudity pool. Adding liquidity is not safe!");
+
+		uint256 matched_CELO = amount_sCELO.mul(reserve_CELO).add(reserve_sCELO.sub(1)).div(reserve_sCELO);
+		require(
+			matched_CELO <= amount_CELO,
+			"Too much sCELO. Can not add proportional liquidity!");
+		return amount_CELO.sub(matched_CELO).mul(reserve_sCELOasCELO).div(reserve_CELO.add(reserve_sCELOasCELO));
+	}
 }

@@ -3,133 +3,152 @@ import { toWei } from "web3-utils"
 import { SavingsKit } from "savingscelo"
 import { SavingsCELOWithUbeV1Instance } from "../../types/truffle-contracts"
 import { ABI as routerABI, IUniswapV2Router } from "../../types/web3-v1-contracts/IUniswapV2Router"
-import { initializeUbePool, testKit, setupSavingsCELOAndUbeswap, ubeDeadline } from "./setup"
+import { testKit, setupSavingsCELOAndUbeswap, ubeDeadline } from "./setup"
 import { Deposited } from "../../types/truffle-contracts/SavingsCELOWithUbeV1"
 import { toTransactionObject } from "@celo/connect"
 import BigNumber from "bignumber.js"
+import { newSavingsCELOWithUbeKit, SavingsCELOWithUbeKit } from "../savingscelo-with-ube"
 
 const SavingsCELOWithUbeV1 = artifacts.require("SavingsCELOWithUbeV1")
 
 contract("SavingsCELOWithUbeV1", (accounts) => {
+	const maxRatio = 1.05
 	let instance: SavingsCELOWithUbeV1Instance
-	let router: IUniswapV2Router
-	let savingsKit: SavingsKit
+	let savingsUbeKit: SavingsCELOWithUbeKit
 
-	const reserveRatio = async () => {
-		const reserves = await instance.getUbeReserves()
-		const reserve_sCELOasCELO = await savingsKit.contract.methods.savingsToCELO(reserves[1].toString()).call()
-		return new BigNumber(reserves[0].toString()).div(reserve_sCELOasCELO)
-	}
-
-	const checkInstanceBalances = async () => {
+	const printInstanceBalances = async () => {
 		const goldToken = await testKit.contracts.getGoldToken()
-		assert.isTrue((await goldToken.balanceOf(instance.address)).eq(0))
-		assert.isTrue((await savingsKit.contract.methods.balanceOf(instance.address).call()) === "0")
+		console.info(`Balances: ` +
+			`${await goldToken.balanceOf(instance.address)} ` +
+			`${await savingsUbeKit.savingsKit.contract.methods.balanceOf(instance.address).call()}`)
 	}
 
 	before(async() => {
 		const {routerAddress, savingsCELOAddress} = await setupSavingsCELOAndUbeswap(testKit, accounts[0])
-		await initializeUbePool(testKit, accounts[0], routerAddress, savingsCELOAddress, toWei("2000", "ether"))
 		const celoTokenAddress = await testKit.registry.addressFor(CeloContract.GoldToken)
 		instance = await SavingsCELOWithUbeV1.new(savingsCELOAddress, celoTokenAddress, routerAddress)
-		router = new testKit.web3.eth.Contract(routerABI, routerAddress) as unknown as IUniswapV2Router
-		savingsKit = new SavingsKit(testKit, savingsCELOAddress)
+		savingsUbeKit = await newSavingsCELOWithUbeKit(testKit, instance.address)
 	})
 
-	it("deposit", async() => {
+	it("deposit in empty pool", async() => {
 		const res = await instance.deposit({from: accounts[1], value: toWei('500', 'ether')})
 		const eventDeposited = res.logs.pop() as Truffle.TransactionLog<Deposited>
 		assert.equal(eventDeposited.event, "Deposited")
 		assert.equal(eventDeposited.args.direct, true)
-		console.info(
-			`UBE reserve ratio: ${await reserveRatio()}, ` +
-			`Deposited: ${eventDeposited.args.celoAmount} ${eventDeposited.args.savingsAmount}`)
-
-		const goldToken = await testKit.contracts.getGoldToken()
-		const toTrade_sCELO = await savingsKit.contract.methods.celoToSavings(toWei('500', 'ether')).call()
-		await toTransactionObject(testKit.connection,
-			savingsKit.contract.methods.increaseAllowance(router.options.address, toTrade_sCELO))
-			.sendAndWaitForReceipt({from: accounts[1]})
-		const beforeTradeCELO = await goldToken.balanceOf(accounts[1])
-		await toTransactionObject(testKit.connection,
-			router.methods.swapExactTokensForTokens(
-				toTrade_sCELO, 0,
-				[savingsKit.contractAddress, goldToken.address],
-				accounts[1], ubeDeadline()))
-			.sendAndWaitForReceipt({from: accounts[1]})
-		const receivedCELO = (await goldToken.balanceOf(accounts[1])).minus(beforeTradeCELO)
-		console.info(`UBE reserve ratio: ${await reserveRatio()}, received: ${receivedCELO}`)
-
-		// Ubeswap pool should now be a better option for depositing.
-		const res2 = await instance.deposit({from: accounts[1], value: receivedCELO.toString(10)})
-		const eventDeposited2 = res2.logs.pop() as Truffle.TransactionLog<Deposited>
-		assert.equal(eventDeposited2.event, "Deposited")
-		assert.equal(eventDeposited2.args.direct, false)
-		console.info(
-			`UBE reserve ratio: ${await reserveRatio()}, ` +
-			`Deposited: ${eventDeposited2.args.celoAmount} ${eventDeposited2.args.savingsAmount}`)
-		const expected_sCELO = await savingsKit.contract.methods.celoToSavings(receivedCELO.toString(10)).call()
-		assert.equal(new BigNumber(eventDeposited2.args.savingsAmount.toString(10)).gt(expected_sCELO), true)
-
-		await checkInstanceBalances()
 	})
 
 	it("add liquidity", async () => {
-		console.info(`UBE reserve ratio: ${await reserveRatio()}`)
-
+		const from = accounts[2]
 		const goldToken = await testKit.contracts.getGoldToken()
-		let toAdd_CELO = toWei("1000", "ether")
-		await goldToken
-			.increaseAllowance(instance.address, toAdd_CELO)
-			.sendAndWaitForReceipt({from: accounts[2]})
-		await instance.addLiquidity(
-			toAdd_CELO,
+
+		const addLiquidity = async (
+			amtV_CELO: BigNumber.Value,
+			amtV_sCELO: BigNumber.Value,
+			maxRatio: number) => {
+			const amt_CELO = new BigNumber(amtV_CELO)
+			const amt_sCELO = new BigNumber(amtV_sCELO)
+			const balance_sCELO = await savingsUbeKit.savingsKit.contract.methods.balanceOf(from).call()
+			const extra_sCELO = amt_sCELO.minus(balance_sCELO)
+			if (extra_sCELO.gt(0)) {
+				const toDeposit = (await savingsUbeKit.savingsKit.savingsToCELO(extra_sCELO)).plus(1)
+				await savingsUbeKit.savingsKit
+					.deposit()
+					.sendAndWaitForReceipt({from: from, value: toDeposit.toFixed(0)})
+			}
+			const approveTXs = await savingsUbeKit.approveAddLiquidity(from, amt_CELO, amt_sCELO)
+			for (const tx of approveTXs) {
+				await tx.sendAndWaitForReceipt({from: from})
+			}
+			await savingsUbeKit
+				.addLiquidity(amt_CELO, amt_sCELO, maxRatio)
+				.sendAndWaitForReceipt({from: from})
+
+			const liquidity = await savingsUbeKit.liquidityBalanceOf(from)
+			console.info(`Liqudity: CELO: ${liquidity.balance_CELO.shiftedBy(-18)}, ${liquidity.balance_sCELO.shiftedBy(-18)}`)
+			console.info(`UBE reserve ratio: ${await savingsUbeKit.reserveRatio()}`)
+		}
+
+		await addLiquidity(
+			toWei("1000", "ether"),
 			0,
-			new BigNumber(1.005).shiftedBy(18).toString(10),
-			{from: accounts[2]})
-		console.info(`UBE reserve ratio: ${await reserveRatio()}`)
-
-		toAdd_CELO = toWei("800", "ether")
-		let toAdd_sCELOasCELO = toWei("200", "ether")
-		await savingsKit.deposit()
-			.sendAndWaitForReceipt({from: accounts[2], value: toAdd_sCELOasCELO})
-		let toAdd_sCELO = await savingsKit.contract.methods.celoToSavings(toAdd_sCELOasCELO).call()
-		await goldToken
-			.increaseAllowance(instance.address, toAdd_CELO)
-			.sendAndWaitForReceipt({from: accounts[2]})
-		await toTransactionObject(testKit.connection,
-			savingsKit.contract.methods.increaseAllowance(instance.address, toAdd_sCELO))
-			.sendAndWaitForReceipt({from: accounts[2]})
-		await instance.addLiquidity(
-			toAdd_CELO,
-			toAdd_sCELO,
-			new BigNumber(1.005).shiftedBy(18).toString(10),
-			{from: accounts[2]})
-		console.info(`UBE reserve ratio: ${await reserveRatio()}`)
-
-		toAdd_CELO = toWei("200", "ether")
-		toAdd_sCELOasCELO = toWei("300", "ether")
-		await savingsKit.deposit()
-			.sendAndWaitForReceipt({from: accounts[2], value: toAdd_sCELOasCELO})
-		toAdd_sCELO = await savingsKit.contract.methods.celoToSavings(toAdd_sCELOasCELO).call()
-		await goldToken
-			.increaseAllowance(instance.address, toAdd_CELO)
-			.sendAndWaitForReceipt({from: accounts[2]})
-		await toTransactionObject(testKit.connection,
-			savingsKit.contract.methods.increaseAllowance(instance.address, toAdd_sCELO))
-			.sendAndWaitForReceipt({from: accounts[2]})
+			maxRatio)
+		await addLiquidity(
+			toWei("800", "ether"),
+			await savingsUbeKit.savingsKit.celoToSavings(toWei("200", "ether")),
+			maxRatio)
 		try {
-			await instance.addLiquidity(
-				toAdd_CELO,
-				toAdd_sCELO,
-				new BigNumber(1.005).shiftedBy(18).toString(10),
-				{from: accounts[2]})
+			await addLiquidity(
+				toWei("200", "ether"),
+				await savingsUbeKit.savingsKit.celoToSavings(toWei("300", "ether")),
+				maxRatio)
 			assert.fail("addLiquidity must have failed!")
 		} catch (e) {
 			console.info(`addLiquidity failed as expected: ${e}`)
 		}
-		console.info(`UBE reserve ratio: ${await reserveRatio()}`)
+		try {
+			await addLiquidity(
+				toWei("10", "ether"),
+				(await savingsUbeKit.savingsKit.celoToSavings(toWei("10", "ether"))).plus(1),
+				maxRatio)
+			assert.fail("addLiquidity must have failed!")
+		} catch (e) {
+			console.info(`addLiquidity failed as expected: ${e}`)
+		}
 
-		await checkInstanceBalances()
+		// Check some more edge cases.
+		await addLiquidity(
+			toWei("10", "ether"),
+			(await savingsUbeKit.savingsKit.celoToSavings(toWei("10", "ether"))).minus(1),
+			maxRatio)
+
+		// Disturb reserve ratio a bit.
+		const toTrade_CELO = toWei("5", "ether")
+		await goldToken
+			.increaseAllowance(savingsUbeKit.router.options.address, toTrade_CELO)
+			.sendAndWaitForReceipt({from: from})
+		await toTransactionObject(testKit.connection,
+			savingsUbeKit.router.methods.swapExactTokensForTokens(
+				toTrade_CELO, 0,
+				[goldToken.address, savingsUbeKit.savingsKit.contractAddress],
+				from, ubeDeadline()))
+			.sendAndWaitForReceipt({from: from})
+		console.info(`UBE reserve ratio: ${await savingsUbeKit.reserveRatio()}`)
+		await addLiquidity(
+			toWei("10", "ether"),
+			(await savingsUbeKit.savingsKit.celoToSavings(toWei("9", "ether"))).plus(1),
+			maxRatio)
+
+		await printInstanceBalances()
+	})
+
+	it("non-direct deposit", async() => {
+		const goldToken = await testKit.contracts.getGoldToken()
+		const toTrade_sCELO = await savingsUbeKit.savingsKit.celoToSavings(toWei('500', 'ether'))
+		await toTransactionObject(testKit.connection,
+			savingsUbeKit.savingsKit.contract.methods
+			.increaseAllowance(savingsUbeKit.router.options.address, toTrade_sCELO.toString(10)))
+			.sendAndWaitForReceipt({from: accounts[1]})
+		const beforeTradeCELO = await goldToken.balanceOf(accounts[1])
+		await toTransactionObject(testKit.connection,
+			savingsUbeKit.router.methods.swapExactTokensForTokens(
+				toTrade_sCELO.toString(10), 0,
+				[savingsUbeKit.savingsKit.contractAddress, goldToken.address],
+				accounts[1], ubeDeadline()))
+			.sendAndWaitForReceipt({from: accounts[1]})
+		const receivedCELO = (await goldToken.balanceOf(accounts[1])).minus(beforeTradeCELO)
+		console.info(`UBE reserve ratio: ${await savingsUbeKit.reserveRatio()}, received: ${receivedCELO}`)
+
+		// Ubeswap pool should now be a better option for depositing.
+		const res = await instance.deposit({from: accounts[1], value: receivedCELO.toString(10)})
+		const eventDeposited = res.logs.pop() as Truffle.TransactionLog<Deposited>
+		assert.equal(eventDeposited.event, "Deposited")
+		assert.equal(eventDeposited.args.direct, false)
+		console.info(
+			`UBE reserve ratio: ${await savingsUbeKit.reserveRatio()}, ` +
+			`Deposited: ${eventDeposited.args.celoAmount} ${eventDeposited.args.savingsAmount}`)
+		const expected_sCELO = await savingsUbeKit.savingsKit.celoToSavings(receivedCELO)
+		assert.equal(expected_sCELO.lte(eventDeposited.args.savingsAmount.toString(10)), true)
+
+		await printInstanceBalances()
 	})
 })
