@@ -76,30 +76,19 @@ contract("SavingsCELOWithUbeV1", (accounts) => {
 			toWei("800", "ether"),
 			await savingsUbeKit.savingsKit.celoToSavings(toWei("200", "ether")),
 			maxRatio)
+		const toAdd_sCELO = await savingsUbeKit.savingsKit.celoToSavings(toWei("100", "ether"))
+		const toAdd_CELO = await savingsUbeKit.minCELOtoAddLiquidity(toAdd_sCELO)
 		try {
 			await addLiquidity(
-				toWei("200", "ether"),
-				await savingsUbeKit.savingsKit.celoToSavings(toWei("300", "ether")),
+				toAdd_CELO.minus(1),
+				toAdd_sCELO,
 				maxRatio)
 			assert.fail("addLiquidity must have failed!")
 		} catch (e) {
 			console.info(`addLiquidity failed as expected: ${e}`)
 		}
-		try {
-			await addLiquidity(
-				toWei("10", "ether"),
-				(await savingsUbeKit.savingsKit.celoToSavings(toWei("10", "ether"))).plus(1),
-				maxRatio)
-			assert.fail("addLiquidity must have failed!")
-		} catch (e) {
-			console.info(`addLiquidity failed as expected: ${e}`)
-		}
-
-		// Check some more edge cases.
-		await addLiquidity(
-			toWei("10", "ether"),
-			(await savingsUbeKit.savingsKit.celoToSavings(toWei("10", "ether"))).minus(1),
-			maxRatio)
+		await addLiquidity(toAdd_CELO, toAdd_sCELO, maxRatio)
+		await addLiquidity(toAdd_CELO, toAdd_sCELO.minus(1), maxRatio)
 
 		// Disturb reserve ratio a bit.
 		const toTrade_CELO = toWei("5", "ether")

@@ -1,11 +1,10 @@
 //SPDX-License-Identifier: MIT
 pragma solidity 0.6.8;
 
-interface ISavingsCELO {
-	function deposit() external payable returns (uint256);
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-	/// Returns amount of CELO that can be claimed for savingsAmount SavingsCELO tokens.
+interface ISavingsCELO is IERC20 {
+	function deposit() external payable returns (uint256);
 	function savingsToCELO(uint256 savingsAmount) external view returns (uint256);
-	/// Returns amount of SavingsCELO tokens that can be received for depositing celoAmount CELO tokens.
 	function celoToSavings(uint256 celoAmount) external view returns (uint256);
 }

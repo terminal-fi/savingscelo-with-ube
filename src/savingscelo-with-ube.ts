@@ -16,14 +16,12 @@ export const newSavingsCELOWithUbeKit = async (kit: ContractKit, contractAddress
 	const savingsKit = new SavingsKit(kit, savingsAddress)
 	const routerContract = new kit.web3.eth.Contract(routerABI, await routerAddress) as unknown as IUniswapV2Router
 	const pairContract = new kit.web3.eth.Contract(pairABI, await pairAddress) as unknown as IUniswapV2Pair
-	const isToken0_sCELO = (await pairContract.methods.token0().call()) === savingsAddress
 	return new SavingsCELOWithUbeKit(
 		kit,
 		contract,
 		savingsKit,
 		routerContract,
 		pairContract,
-		isToken0_sCELO,
 	)
 }
 
@@ -33,18 +31,14 @@ export class SavingsCELOWithUbeKit {
 		public contract: SavingsCeloWithUbeV1,
 		public savingsKit: SavingsKit,
 		public router: IUniswapV2Router,
-		public pair: IUniswapV2Pair,
-		public isToken0_sCELO: boolean) {
+		public pair: IUniswapV2Pair) {
 	}
 
 	public reserves = async () => {
-		const reserves = await this.pair.methods.getReserves().call()
-		const [reserve_sCELO, reserve_CELO] = this.isToken0_sCELO ?
-			[reserves.reserve0, reserves.reserve1] :
-			[reserves.reserve1, reserves.reserve0]
+		const r = await this.contract.methods.ubeGetReserves().call()
 		return {
-			reserve_CELO: new BigNumber(reserve_CELO),
-			reserve_sCELO: new BigNumber(reserve_sCELO),
+			reserve_CELO: new BigNumber(r.reserve_CELO),
+			reserve_sCELO: new BigNumber(r.reserve_sCELO),
 		}
 	}
 
@@ -124,7 +118,11 @@ export class SavingsCELOWithUbeKit {
 		return txs
 	}
 
-
+	// Minimum amount of CELO needed to complement amount_sCELO sCELO tokens to add liquidity.
+	public minCELOtoAddLiquidity = async (amount_sCELO: BigNumber) => {
+		const {reserve_CELO, reserve_sCELO} = await this.reserves()
+		return amount_sCELO.multipliedBy(reserve_CELO).div(reserve_sCELO).integerValue(BigNumber.ROUND_UP)
+	}
 }
 
 // Calculates maximum potential loss (or "impermanent loss") due to Ube price changes
