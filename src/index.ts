@@ -1,4 +1,4 @@
-export { SavingsCELOWithUbeKit, newSavingsCELOWithUbeKit } from "./savingscelo-with-ube"
+export * from "./savingscelo-with-ube"
 
 export { SavingsCeloWithUbeV1 as SavingsCELOWithUbeV1 } from "../types/web3-v1-contracts/SavingsCELOWithUbeV1"
 
