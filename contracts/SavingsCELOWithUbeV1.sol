@@ -94,17 +94,17 @@ contract SavingsCELOWithUbeV1 {
 	/// necessary amount of CELO to sCELO tokens before adding liquidity too.
 	/// @param amount_CELO amount of CELO to take from caller.
 	/// @param amount_sCELO amount of sCELO to take from caller.
-	/// @param reserveRatioMax maximum allowed reserve ratio. reserveRatioMax is multiplied by 1e18 to
+	/// @param maxReserveRatio maximum allowed reserve ratio. maxReserveRatio is multiplied by 1e18 to
 	/// represent a float value as an integer.
-	/// @dev reserveRatioMax protects the caller from adding liquidity when pool is not balanced.
+	/// @dev maxReserveRatio protects the caller from adding liquidity when pool is not balanced.
 	/// @return addedLiquidity amount of Ubeswap pool liquidity tokens that got added and sent to the caller.
 	function addLiquidity(
 		uint256 amount_CELO,
 		uint256 amount_sCELO,
-		uint256 reserveRatioMax
+		uint256 maxReserveRatio
 	) external returns (uint256 addedLiquidity) {
 		(uint256 _amount_CELO, uint256 _amount_sCELO) = (amount_CELO, amount_sCELO);
-		uint256 toConvert_CELO = calculateToConvertCELO(amount_CELO, amount_sCELO, reserveRatioMax);
+		uint256 toConvert_CELO = calculateToConvertCELO(amount_CELO, amount_sCELO, maxReserveRatio);
 		uint256 converted_sCELO = 0;
 		if (amount_CELO > 0) {
 			require(
@@ -131,13 +131,13 @@ contract SavingsCELOWithUbeV1 {
 				savingsCELO.approve(address(ubeRouter), amount_sCELO),
 				"sCELO approve failed for ubeRouter!");
 		}
-		// NOTE: amount_CELO might be 1 or at most 2 WEI more than needed, however there is no point
+		// NOTE: amount_CELO might be few WEI more than needed, however there is no point
 		// to try to return that back to the caller since GAS costs associated with dealing 1 or 2 WEI would be
 		// multiple orders of magnitude more costly.
 		(, , addedLiquidity) = ubeRouter.addLiquidity(
 			address(CELO), address(savingsCELO),
 			amount_CELO, amount_sCELO,
-			amount_CELO.sub(2), amount_sCELO,
+			amount_CELO.sub(5), amount_sCELO,
 			msg.sender, block.timestamp);
 
 		emit AddedLiquidity(msg.sender, _amount_CELO, _amount_sCELO, addedLiquidity);
@@ -149,7 +149,7 @@ contract SavingsCELOWithUbeV1 {
 	function calculateToConvertCELO(
 		uint256 amount_CELO,
 		uint256 amount_sCELO,
-		uint256 reserveRatioMax
+		uint256 maxReserveRatio
 	) internal view returns (uint256 toConvert_CELO) {
 		(uint256 reserve_CELO, uint256 reserve_sCELO) = ubeGetReserves();
 		if (reserve_CELO == 0 && reserve_sCELO == 0) {
@@ -157,15 +157,15 @@ contract SavingsCELOWithUbeV1 {
 			reserve_CELO = 1;
 			reserve_sCELO = savingsCELO.celoToSavings(1);
 		}
-		uint256 reserve_sCELOasCELO = savingsCELO.savingsToCELO(reserve_sCELO);
-		// Reserve ratio is: max(reserve_CELO/reserve_sCELOasCELO, reserve_sCELOasCELO/reserve_CELO)
+		uint256 reserve_CELO_as_sCELO = savingsCELO.celoToSavings(reserve_CELO);
+		// Reserve ratio is: max(reserve_sCELO/reserve_CELO_as_sCELO, reserve_CELO_as_sCELO/reserve_sCELO)
 		// We perform comparisons without using division to keep things as safe and correct as possible.
 		require(
-			reserve_CELO.mul(reserveRatioMax) >= reserve_sCELOasCELO.mul(1e18),
-			"Too little CELO in the liqudity pool. Adding liquidity is not safe!");
-		require(
-			reserve_sCELOasCELO.mul(reserveRatioMax) >= reserve_CELO.mul(1e18),
+			reserve_sCELO.mul(maxReserveRatio) >= reserve_CELO_as_sCELO.mul(1e18),
 			"Too little sCELO in the liqudity pool. Adding liquidity is not safe!");
+		require(
+			reserve_CELO_as_sCELO.mul(maxReserveRatio) >= reserve_sCELO.mul(1e18),
+			"Too little CELO in the liqudity pool. Adding liquidity is not safe!");
 
 		// matched_CELO and amount_sCELO can be added proportionally.
 		uint256 matched_CELO = amount_sCELO.mul(reserve_CELO).add(reserve_sCELO.sub(1)).div(reserve_sCELO);
@@ -177,7 +177,12 @@ contract SavingsCELOWithUbeV1 {
 		// NOTE: calculations and conversions are done in such a way that all sCELO will always be consumed
 		// and rounding errors will apply to CELO itself. It is possible that we will have to throw out 1 or 2
 		// WEI at most to meet the proportionality.
-		return amount_CELO.sub(matched_CELO).mul(reserve_sCELOasCELO).div(reserve_CELO.add(reserve_sCELOasCELO));
+		toConvert_CELO = amount_CELO.sub(matched_CELO)
+			.mul(reserve_sCELO)
+			.div(reserve_sCELO.add(reserve_CELO_as_sCELO));
+		// Prefer to under-convert, vs to over-convert. This way we make sure that all sCELO is always
+		// consumed when we add liquidity and there can be only 1 or 2 celoWEI left over.
+		return toConvert_CELO > 0 ? toConvert_CELO.sub(1) : 0;
 	}
 
 	/// @notice returns Ubeswap CELO<->sCELO pool reserves.
