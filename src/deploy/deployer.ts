@@ -105,6 +105,9 @@ async function main() {
 	case "alfajores":
 		savingsCELOAddress = SavingsCELOAddressAlfajores
 		break
+	case "mainnet":
+		savingsCELOAddress = "0x2879BFD5e7c4EF331384E908aaA3Bd3014b703fA"
+		break
 	default:
 		throw new Error(`unsupported network: ${opts.network}`)
 	}
