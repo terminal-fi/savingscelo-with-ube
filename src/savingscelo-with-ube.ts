@@ -104,7 +104,7 @@ export class SavingsCELOWithUbeKit {
 			txs.push(
 				goldToken.increaseAllowance(
 					this.contract.options.address,
-					!infinite ? allowance_CELO.minus(amount_CELO).negated() : erc20InfiniteAmount))
+					!infinite ? amount_CELO : erc20InfiniteAmount))
 		}
 		if (allowance_sCELO.lt(amount_sCELO)) {
 			txs.push(
@@ -112,10 +112,47 @@ export class SavingsCELOWithUbeKit {
 					this.kit.connection,
 					this.savingsKit.contract.methods.increaseAllowance(
 						this.contract.options.address,
-						(!infinite ? allowance_sCELO.minus(amount_sCELO).negated() : erc20InfiniteAmount).toString(10)))
+						(!infinite ? amount_sCELO : erc20InfiniteAmount).toString(10)))
 				)
 		}
 		return txs
+	}
+
+	public approveRemoveLiquidity = async (
+		from: string,
+		amount_ULP: BigNumber.Value,
+		infinite?: boolean,
+	) => {
+		const allowance_ULP = new BigNumber(await this.pair.methods.allowance(
+			from, this.router.options.address).call())
+		const txs: CeloTransactionObject<boolean>[] = []
+		if (allowance_ULP.lt(amount_ULP)) {
+			txs.push(
+				toTransactionObject(
+					this.kit.connection,
+					this.pair.methods.approve(
+						this.router.options.address,
+						(!infinite ? amount_ULP : erc20InfiniteAmount).toString(10)))
+				)
+		}
+		return txs
+	}
+
+	public removeLiquidity = async (
+		amount_ULP: BigNumber.Value,
+		minAmount_CELO: BigNumber.Value,
+		minAmount_sCELO: BigNumber.Value,
+		to: string,
+		deadline: number | string,
+	) => {
+		const goldToken = await this.kit.contracts.getGoldToken()
+		return toTransactionObject(
+			this.kit.connection,
+			this.router.methods.removeLiquidity(
+				goldToken.address, this.savingsKit.contractAddress,
+				amount_ULP.toString(10), minAmount_CELO.toString(10), minAmount_sCELO.toString(10),
+				to, deadline
+			))
 	}
 
 	// Minimum amount of CELO needed to complement amount_sCELO sCELO tokens to add liquidity.
