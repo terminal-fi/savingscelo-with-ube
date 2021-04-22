@@ -1,6 +1,6 @@
 {
   "name": "savingscelo-with-ube",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "SavingsCELO x Ubeswap integration contracts and @celo/contractkit based SDK",
   "repository": {
     "url": "https://github.com/zviadm/savingscelo-with-ube"
