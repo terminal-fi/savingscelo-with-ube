@@ -1,9 +1,9 @@
 {
   "name": "@terminal-fi/savingscelo-with-ube",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "SavingsCELO x Ubeswap integration contracts and @celo/contractkit based SDK",
   "repository": {
-    "url": "https://github.com/zviadm/savingscelo-with-ube"
+    "url": "https://github.com/terminal-fi/savingscelo-with-ube"
   },
   "dependencies": {
     "@celo/connect": "^1.2.4",
