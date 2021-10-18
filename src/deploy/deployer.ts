@@ -5,10 +5,9 @@ import path from "path"
 import {ContractKit, newKit} from "@celo/contractkit"
 import { AddressValidation, newLedgerWalletWithSetup } from "@celo/wallet-ledger"
 import TransportNodeHid from "@ledgerhq/hw-transport-node-hid"
-import { toTransactionObject } from "@celo/connect"
 
 import { bytecode as SavingsCELOWithUbeV1Bytecode } from "../../build/contracts/SavingsCELOWithUbeV1.json"
-import { SavingsCELOAddressAlfajores } from "savingscelo"
+import { SavingsCELOAddressAlfajores } from "@terminal-fi/savingscelo"
 
 process.on('unhandledRejection', (reason, _promise) => {
 	// @ts-ignore

@@ -1,5 +1,5 @@
 import { ContractKit } from "@celo/contractkit";
-import { SavingsKit } from "savingscelo";
+import { SavingsKit } from "@terminal-fi/savingscelo";
 import { SavingsCeloWithUbeV1, ABI } from "../types/web3-v1-contracts/SavingsCELOWithUbeV1"
 import { IUniswapV2Router, ABI as routerABI } from "../types/web3-v1-contracts/IUniswapV2Router"
 import { IUniswapV2Pair, ABI as pairABI } from "../types/web3-v1-contracts/IUniswapV2Pair"

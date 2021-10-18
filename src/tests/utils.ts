@@ -3,7 +3,7 @@ import BigNumber from "bignumber.js"
 
 import { bytecode as factoryBytecode } from "../../precompiled/UniswapV2Factory.json"
 import { bytecode as routerBytecode } from "../../precompiled/UniswapV2Router02.json"
-import { bytecode as savingsCELOBytecode } from "savingscelo/build/contracts/SavingsCELO.json"
+import { bytecode as savingsCELOBytecode } from "@terminal-fi/savingscelo/build/contracts/SavingsCELO.json"
 
 import { SavingsCELOWithUbeKit } from "../savingscelo-with-ube"
 

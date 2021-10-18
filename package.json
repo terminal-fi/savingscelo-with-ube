@@ -1,5 +1,5 @@
 {
-  "name": "savingscelo-with-ube",
+  "name": "@terminal-fi/savingscelo-with-ube",
   "version": "1.5.0",
   "description": "SavingsCELO x Ubeswap integration contracts and @celo/contractkit based SDK",
   "repository": {
@@ -8,8 +8,8 @@
   "dependencies": {
     "@celo/connect": "^1.2.4",
     "@celo/contractkit": "^1.2.4",
+    "@terminal-fi/savingscelo": "^3.4.0",
     "bignumber.js": "^9.0.1",
-    "savingscelo": "^3.3.0",
     "web3": "^1.3.4",
     "web3-utils": "^1.3.0"
   },
